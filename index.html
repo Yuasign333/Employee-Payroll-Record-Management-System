@@ -1,0 +1,327 @@
+<!DOCTYPE HTML>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Employee Payroll Record Management System</title>
+</head>
+
+<body style="font-family: 'Poppins', sans-serif; line-height:1.8; max-width:900px;
+margin:40px auto; background-color:#f4f4f4; text-align:center; padding:0 20px;">
+
+    <h1 style="color:#B8860B;">Employee Payroll Record Management System</h1>
+
+    <!--Card 1: Employee Information + Calculate/Save/Clear-->
+
+    <div style="background-color:white; padding:20px; border-radius:8px; max-width:600px;
+margin:0 auto; text-align:center;">
+
+        <h3 style="color:#B8860B;">Employee Information</h3>
+
+        <!--Employee ID is reused both when saving a new record and when retrieving one-->
+
+        <b style="color:#D5B60A;">Employee ID: </b>
+        <input type="text" id="empId" placeholder="e.g. E001" style="width:50%; padding:8px;">
+        <br><br>
+
+        <b style="color:#D5B60A;">Employee Name: </b>
+        <input type="text" id="empName" style="width:50%; padding:8px;">
+        <br><br />
+
+        <b style="color:#D5B60A;">Department: </b>
+        <input type="text" id="department" style="width:50%; padding:8px;">
+        <br><br>
+
+        <b style="color:#D5B60A;">Hours Worked: </b>
+        <input type="number" id="hoursWorked" style="width:50%; padding:8px;">
+        <br><br>
+
+        <b style="color:#D5B60A;">Hourly Rate: </b>
+        <input type="number" id="hourlyRate" style="width:50%; padding:8px;">
+        <br><br>
+
+        <b style="color:#D5B60A;">Other Deduction: </b>
+        <input type="number" id="otherDeduction" style="width:50%; padding:8px;">
+        <br><br><hr><br>
+
+        <!--Runs calculatePayroll(), which validates everything and computes the payroll-->
+        <input type="button" value="Calculate Payroll" onclick="calculatePayroll()"
+               style="background-color:#FFD700; color:black; padding:10px 15px; font-weight:bold; border:none;
+    border-radius:4px; width:49%; cursor:pointer;">
+
+        <!--Only works after Calculate Payroll succeeds, enforced inside savePayrollRecord()-->
+        <input type="button" value="Save Payroll Record" onclick="savePayrollRecord()"
+               style="background-color:#DAA520; color:white; padding:10px 15px; font-weight:bold; border:none;
+    border-radius:4px; width:49%; cursor:pointer;">
+        <br><br>
+
+        <!--Resets all fields, results, and the isCalculated flag-->
+        <input type="button" value="Clear Form" onclick="clearForm()"
+               style="background-color:#95a5a6; color:white; padding:10px 15px; font-weight:bold; border:none;
+    border-radius:4px; width:100%; cursor:pointer;">
+
+    </div>
+
+    <!--Card 2: Retrieve a previously saved payroll.txt file-->
+    <div style="background-color:white; padding:20px; border-radius:8px; max-width:600px;
+margin:20px auto; text-align:center;">
+
+        <h3 style="color:#B8860B;">Retrieve Payroll Record</h3>
+
+        <b>Select Saved File: </b>
+        <input type="file" id="fileInput" accept=".txt">
+        <br><br>
+
+        <!--Searches the selected file for the Employee ID typed above-->
+        <input type="button" value="Retrieve Record" onclick="retrievePayrollRecord()"
+               style="background-color:#FFD700; color:black; padding:10px 15px; font-weight:bold; border:none;
+    border-radius:4px; width:100%; cursor:pointer;">
+
+    </div>
+
+    <!--Result/message box, filled by JS using innerHTML-->
+    <div id="display" style="max-width:600px; margin:20px auto; font-size:1.1em;"></div>
+
+    <script>
+
+        // ===== GLOBAL VARIABLES =====
+
+        // Hold the latest calculated values so Save can use them right after Calculate runs
+        var grossPay = 0;
+        var taxDeduction = 0;
+        var totalDeductions = 0;
+        var netPay = 0;
+        var isCalculated = false; // true only after a successful Calculate Payroll
+
+        // Keeps every record saved this session so Save can rebuild one combined file
+        var payrollRecords = [];
+
+        // ===== VALIDATION PATTERNS =====
+
+        // Employee ID must be exactly "E" followed by 3 digits, e.g. E001
+        var empIdPattern = /^E[0-9]{3}$/;
+
+        // Name and Department must only contain letters and spaces (no numbers/special characters)
+        var textOnlyPattern = /^[A-Za-z ]+$/;
+
+        function calculatePayroll() {
+            var empId = document.getElementById("empId").value;
+            var empName = document.getElementById("empName").value;
+            var department = document.getElementById("department").value;
+            var hoursWorked = parseFloat(document.getElementById("hoursWorked").value);
+            var hourlyRate = parseFloat(document.getElementById("hourlyRate").value);
+            var otherDeduction = document.getElementById("otherDeduction").value;
+
+            // Validation 1: block empty required fields
+            if (empId.trim() === "" || empName.trim() === "" || department.trim() === "") {
+                document.getElementById("display").innerHTML = "<p style='color:#e74c3c;'>Please fill in Employee ID, Name, and Department.</p>";
+                isCalculated = false;
+                return;
+            }
+
+            // Validation 2: Employee ID must follow the E001 format
+            if (!empIdPattern.test(empId)) {
+                document.getElementById("display").innerHTML = "<p style='color:#e74c3c;'>Employee ID must follow the format E001 (letter E + 3 digits).</p>";
+                isCalculated = false;
+                return;
+            }
+
+            // Validation 3: Name must not contain numbers or special characters
+            if (!textOnlyPattern.test(empName)) {
+                document.getElementById("display").innerHTML = "<p style='color:#e74c3c;'>Employee Name must only contain letters.</p>";
+                isCalculated = false;
+                return;
+            }
+
+            // Validation 4: Department must not contain numbers or special characters
+            if (!textOnlyPattern.test(department)) {
+                document.getElementById("display").innerHTML = "<p style='color:#e74c3c;'>Department must only contain letters.</p>";
+                isCalculated = false;
+                return;
+            }
+
+            // Validation 5: Hours Worked and Hourly Rate must be valid positive numbers
+            if (isNaN(hoursWorked) || hoursWorked < 0 || isNaN(hourlyRate) || hourlyRate < 0) {
+                document.getElementById("display").innerHTML = "<p style='color:#e74c3c;'>Hours Worked and Hourly Rate must be valid positive numbers.</p>";
+                isCalculated = false;
+                return;
+            }
+
+            // Other Deduction defaults to 0 if left blank, otherwise must be a valid positive number
+            if (otherDeduction.trim() === "")
+            {
+                otherDeduction = 0;
+            }
+            else
+            {
+                otherDeduction = parseFloat(otherDeduction);
+                if (isNaN(otherDeduction) || otherDeduction < 0) {
+                    document.getElementById("display").innerHTML = "<p style='color:#e74c3c;'>Other Deduction must be a valid positive number.</p>";
+                    isCalculated = false;
+                    return;
+                }
+            }
+
+            // ===== PAYROLL COMPUTATION =====
+            grossPay = hoursWorked * hourlyRate;
+            taxDeduction = grossPay * 0.10; // 10% tax
+            totalDeductions = taxDeduction + otherDeduction;
+            netPay = grossPay - totalDeductions;
+            isCalculated = true;
+
+            // Display the computed results
+            document.getElementById("display").innerHTML =
+                "<div style='background-color:#fffdf0; padding:20px; border-radius:8px; border:2px solid #FFD700;'>" +
+                "<p><b>Gross Pay:</b> ₱" + grossPay.toFixed(2) + "</p>" +
+                "<p><b>Tax Deduction (10%):</b> ₱" + taxDeduction.toFixed(2) + "</p>" +
+                "<p><b>Total Deductions:</b> ₱" + totalDeductions.toFixed(2) + "</p>" +
+                "<p style='color:#B8860B; font-size:1.2em;'><b>Net Pay:</b> ₱" + netPay.toFixed(2) + "</p>" +
+                "</div>";
+        }
+
+        function savePayrollRecord()
+        {
+            // Saving is only allowed right after a successful calculation
+
+            if (!isCalculated) {
+                document.getElementById("display").innerHTML = "<p style='color:#e74c3c;'>Please calculate payroll first before saving.</p>";
+                return;
+            }
+
+            var empId = document.getElementById("empId").value;
+            var empName = document.getElementById("empName").value;
+            var department = document.getElementById("department").value;
+            var hoursWorked = document.getElementById("hoursWorked").value;
+            var hourlyRate = document.getElementById("hourlyRate").value;
+
+            // Check if this Employee ID was already saved this session
+
+            for (var i = 0; i < payrollRecords.length; i++) {
+                var existingFields = payrollRecords[i].split(",");
+                if (existingFields[0] === empId) {
+                    document.getElementById("display").innerHTML = "<p style='color:#e74c3c;'>Employee ID " + empId + " is already saved. Duplicate records are not allowed.</p>";
+                    return; 
+                }
+            }
+
+
+            // Build this employee's line in the required field order (comma-separated)
+            var line = empId + "," + empName + "," + department + "," + hoursWorked + "," +
+                hourlyRate + "," + grossPay.toFixed(2) + "," + taxDeduction.toFixed(2) + "," +
+                (totalDeductions - taxDeduction).toFixed(2) + "," + totalDeductions.toFixed(2) + "," +
+                netPay.toFixed(2);
+
+            // Add this record to the in-memory list of all records saved so far
+            payrollRecords.push(line);
+
+            // Rebuild the full file content from every record collected this session
+            var fileContent = "";
+            for (var i = 0; i < payrollRecords.length; i++) {
+                fileContent = fileContent + payrollRecords[i] + "\n";
+            }
+
+            // Package all records into one downloadable file, same filename every time
+            var fileData = new Blob([fileContent], { type: "text/plain" });
+            var downloadUrl = URL.createObjectURL(fileData);
+
+            var tempLink = document.createElement("a");
+            tempLink.href = downloadUrl;
+            tempLink.download = "payroll.txt";
+            tempLink.click();
+
+            document.getElementById("display").innerHTML = "<p style='color:#B8860B;'>Payroll record saved for " + empId + ".</p>";
+        }
+
+        function retrievePayrollRecord()
+        {
+            var searchId = document.getElementById("empId").value;
+            var fileInput = document.getElementById("fileInput");
+
+            // Validation: block empty search
+            if (searchId.trim() === "")
+            {
+                document.getElementById("display").innerHTML = "<p style='color:#e74c3c;'>Please enter the Employee ID to search for.</p>";
+                return;
+            }
+
+            // Validation: Employee ID must follow the E001 format
+            if (!empIdPattern.test(searchId)) {
+                document.getElementById("display").innerHTML = "<p style='color:#e74c3c;'>Employee ID must follow the format E001 (letter E + 3 digits).</p>";
+                return;
+            }
+
+            // Validation: a file must be selected
+            if (fileInput.files.length === 0) {
+                document.getElementById("display").innerHTML = "<p style='color:#e74c3c;'>Please select a saved payroll file.</p>";
+                return;
+            }
+
+            var file = fileInput.files[0];
+            var reader = new FileReader();
+
+            reader.onload = function () {
+                var fileText = reader.result;
+                var lines = fileText.split("\n");
+                var found = false;
+
+                // Loop through every saved line and look for a matching Employee ID
+                for (var i = 0; i < lines.length; i++)
+                {
+                    var line = lines[i].trim();
+
+                    if (line === "") {
+                        continue; // skip blank lines
+                    }
+
+                    var fields = line.split(",");
+
+                    // fields[0]=ID, [1]=Name, [2]=Department, [3]=Hours, [4]=Rate,
+                    // [5]=Gross Pay, [6]=Tax, [7]=Other Deduction, [8]=Total Deductions, [9]=Net Pay
+
+                    if (fields[0] === searchId) {
+                        found = true;
+                        document.getElementById("display").innerHTML =
+                            "<div style='background-color:#fffdf0; padding:20px; border-radius:8px; border:2px solid #FFD700;'>" +
+                            "<p><b>Employee ID:</b> " + fields[0] + "</p>" +
+                            "<p><b>Name:</b> " + fields[1] + "</p>" +
+                            "<p><b>Department:</b> " + fields[2] + "</p>" +
+                            "<p><b>Hours Worked:</b> " + fields[3] + "</p>" +
+                            "<p><b>Hourly Rate:</b> ₱" + fields[4] + "</p>" +
+                            "<p><b>Gross Pay:</b> ₱" + fields[5] + "</p>" +
+                            "<p><b>Tax Deduction:</b> ₱" + fields[6] + "</p>" +
+                            "<p><b>Other Deduction:</b> ₱" + fields[7] + "</p>" +
+                            "<p><b>Total Deductions:</b> ₱" + fields[8] + "</p>" +
+                            "<p style='color:#B8860B; font-size:1.2em;'><b>Net Pay:</b> ₱" + fields[9] + "</p>" +
+                            "</div>";
+                    }
+                }
+
+                if (!found) {
+                    document.getElementById("display").innerHTML = "<p style='color:#e74c3c;'>No record found for Employee ID " + searchId + ".</p>";
+                }
+            };
+
+            reader.readAsText(file);
+        }
+
+        function clearForm()
+        {
+            // Clear all input fields
+
+            document.getElementById("empId").value = "";
+            document.getElementById("empName").value = "";
+            document.getElementById("department").value = "";
+            document.getElementById("hoursWorked").value = "";
+            document.getElementById("hourlyRate").value = "";
+            document.getElementById("otherDeduction").value = "";
+            document.getElementById("fileInput").value = "";
+
+            // Clear the displayed result/message
+            document.getElementById("display").innerHTML = "";
+
+            // Reset the calculation flag so Save is blocked again until recalculated
+            isCalculated = false;
+        }
+    </script>
+
+</body>
+</html>
